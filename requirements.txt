@@ -1,0 +1,6 @@
+epub_meta>=0.0.7
+lxml>=4.9.3
+beautifulsoup4>=4.12.2
+bs4>=0.0.2
+ebooklib>=0.18.0
+tika>=2.6.0 

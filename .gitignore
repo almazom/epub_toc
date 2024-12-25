@@ -67,8 +67,6 @@ tests/data/epub_samples/*.epub
 reports/
 logs/
 *.log
-*.json
-*.txt
 
 # Environment variables
 .env
@@ -85,3 +83,90 @@ _build/
 *.bak
 *.backup
 *~ 
+
+# Additional IDE specific
+.cursorrules
+
+# Additional test artifacts
+test_results/
+test.epub
+.benchmarks/ 
+
+# Coverage reports
+coverage/
+
+# Additional test files
+*.epub
+!examples/*.epub
+
+# Local development
+.cursorrules
+.cursor-remote-env 
+
+# Generated JSON files
+tests/data/epub_toc_json/*.json
+*_toc.json
+*.epub.json
+
+# Additional build artifacts
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.manifest
+*.spec
+
+# System and temp files
+*.swp
+*.swo
+*~
+.nfs*
+.fuse_hidden* 
+
+# Python packaging
+*.whl
+.eggs/
+pip-wheel-metadata/
+share/python-wheels/
+MANIFEST
+
+# Profiling
+*.prof
+*.profile
+.prof/
+profile_results/
+*.stats
+
+# Jupyter Notebook
+.ipynb_checkpoints
+*.ipynb
+
+# mypy
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.pyre/
+
+# Cython debug symbols
+cython_debug/
+
+# Celery
+celerybeat-schedule
+celerybeat.pid
+
+# Sphinx documentation
+docs/generated/
+docs/auto_examples/
+docs/modules/generated/
+docs/api/_autosummary/
+
+# Backup files
+**/*~
+**/*.bak
+**/.*.swp
+
+# Local development
+.env.*
+!.env.example
+*.local
+local_settings.py 

@@ -1,73 +1,333 @@
-import os
-import json
-import tempfile
+"""Integration tests for EPUB TOC Parser."""
+
 import pytest
-from epub_toc_parser import EPUBTOCParser
+from pathlib import Path
+from typing import List, Dict
 
-# Путь к тестовым EPUB файлам
-SAMPLES_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'data', 'epub_samples')
+from epub_toc import (
+    EPUBTOCParser,
+    TOCItem,
+    ValidationError,
+    ExtractionError,
+    StructureError,
+    ParsingError
+)
 
-def get_test_epub_path(filename):
-    """Получение полного пути к тестовому EPUB файлу"""
-    return os.path.join(SAMPLES_DIR, filename)
-
-class TestEPUBParserIntegration:
-    """Интеграционные тесты для парсера EPUB"""
+def validate_toc_structure(toc_items: List[Dict]) -> List[str]:
+    """Validate TOC structure and return list of validation errors."""
+    errors = []
     
-    @pytest.mark.parametrize('epub_file', [
-        'syuzen_zontag-o_fotografii-1489340408.epub',
-        'stiven_pinker_enlightenment_now_.epub'
-    ])
-    def test_full_extraction_cycle(self, epub_file):
-        """Тест полного цикла извлечения и сохранения оглавления"""
-        # Инициализация парсера
-        parser = EPUBTOCParser(get_test_epub_path(epub_file))
+    def validate_item(item: Dict, path: str = "root"):
+        required_fields = ['title', 'href', 'level']
         
-        # Извлечение оглавления
-        toc = parser.extract_toc()
-        assert toc is not None
-        assert len(toc) > 0
+        # Check required fields
+        for field in required_fields:
+            if field not in item:
+                errors.append(f"{path}: Missing required field '{field}'")
+            elif not isinstance(item[field], (str, int)):
+                errors.append(f"{path}: Invalid type for field '{field}'")
         
-        # Сохранение в JSON
-        with tempfile.NamedTemporaryFile(suffix='.json', delete=False) as tmp_file:
-            parser.save_toc_to_json(tmp_file.name)
-            
-            # Проверка сохраненного файла
-            with open(tmp_file.name, 'r', encoding='utf-8') as f:
-                saved_toc = json.load(f)
-            
-            # Проверка структуры и содержимого
-            assert saved_toc == toc
-            
-            # Проверка обязательных полей
-            for item in saved_toc:
-                assert 'title' in item
-                assert 'href' in item
-                assert 'level' in item
-                assert 'children' in item
-            
-        # Очистка
-        os.unlink(tmp_file.name)
+        # Validate field values
+        if 'title' in item and not item['title'].strip():
+            errors.append(f"{path}: Empty title")
+        
+        if 'href' in item and not item['href'].strip():
+            errors.append(f"{path}: Empty href")
+        
+        if 'level' in item:
+            if not isinstance(item['level'], int):
+                errors.append(f"{path}: Level must be integer")
+            elif item['level'] < 0:
+                errors.append(f"{path}: Level must be non-negative")
+        
+        # Check children
+        if 'children' in item:
+            if not isinstance(item['children'], list):
+                errors.append(f"{path}: 'children' must be a list")
+            else:
+                for i, child in enumerate(item['children']):
+                    validate_item(child, f"{path}->child[{i}]")
+                    
+                    # Check level hierarchy
+                    if child.get('level', 0) <= item.get('level', 0):
+                        errors.append(
+                            f"{path}->child[{i}]: Child level must be greater than parent level"
+                        )
     
-    def test_batch_processing(self):
-        """Тест пакетной обработки нескольких файлов"""
-        results = []
+    for i, item in enumerate(toc_items):
+        validate_item(item, f"item[{i}]")
+    
+    return errors
+
+@pytest.fixture
+def sample_epub_files(epub_samples_dir):
+    """Get list of sample EPUB files."""
+    files = [
+        f for f in epub_samples_dir.glob("*.epub")
+        if f.is_file()  # Only include actual files, not directories
+    ]
+    if not files:
+        pytest.skip("No EPUB files found in test directory")
+    return files
+
+def test_parser_initialization(sample_epub_files):
+    """Test parser initialization with different configurations."""
+    epub_file = sample_epub_files[0]
+    
+    # Test default initialization
+    parser = EPUBTOCParser(epub_file)
+    assert parser.active_methods == EPUBTOCParser.EXTRACTION_METHODS
+    
+    # Test custom method selection
+    methods = ['epub_meta', 'ncx']
+    parser = EPUBTOCParser(epub_file, extraction_methods=methods)
+    assert len(parser.active_methods) == 2
+    assert all(m[0] in methods for m in parser.active_methods)
+    
+    # Test invalid file
+    with pytest.raises(ValidationError):
+        EPUBTOCParser("nonexistent.epub")
+    
+    # Test invalid methods
+    with pytest.raises(ValidationError):
+        EPUBTOCParser(epub_file, extraction_methods=[])
+
+def test_toc_item_validation():
+    """Test TOC item validation."""
+    # Test valid item
+    item = TOCItem("Title", "href.html", 0)
+    assert item.title == "Title"
+    assert item.href == "href.html"
+    assert item.level == 0
+    
+    # Test invalid title
+    with pytest.raises(ValidationError):
+        TOCItem("", "href.html", 0)
+    with pytest.raises(ValidationError):
+        TOCItem(None, "href.html", 0)
+    
+    # Test invalid href
+    with pytest.raises(ValidationError):
+        TOCItem("Title", None, 0)
+    
+    # Test invalid level
+    with pytest.raises(ValidationError):
+        TOCItem("Title", "href.html", -1)
+    with pytest.raises(ValidationError):
+        TOCItem("Title", "href.html", "0")
+
+def test_extraction_methods(sample_epub_files):
+    """Test individual extraction methods."""
+    results = {}
+    errors = {}
+    
+    for epub_file in sample_epub_files:
+        parser = EPUBTOCParser(epub_file)
         
-        # Получаем список всех EPUB файлов
-        epub_files = [f for f in os.listdir(SAMPLES_DIR) if f.endswith('.epub')]
+        for method_name, method_attr in EPUBTOCParser.EXTRACTION_METHODS:
+            try:
+                method = getattr(parser, method_attr)
+                result = method()
+                
+                if result:
+                    # Validate structure
+                    toc_dicts = [item.to_dict() for item in result]
+                    validation_errors = validate_toc_structure(toc_dicts)
+                    
+                    if not validation_errors:
+                        results.setdefault(method_name, []).append(epub_file.name)
+                    else:
+                        errors.setdefault(method_name, []).append({
+                            'file': epub_file.name,
+                            'errors': validation_errors
+                        })
+                        
+            except Exception as e:
+                errors.setdefault(method_name, []).append({
+                    'file': epub_file.name,
+                    'error': str(e)
+                })
+    
+    # Report results
+    print("\nExtraction Method Results:")
+    for method, successful_files in results.items():
+        success_rate = len(successful_files) / len(sample_epub_files) * 100
+        print(f"\n{method}:")
+        print(f"Success rate: {success_rate:.1f}%")
+        print(f"Successful files: {len(successful_files)}")
+    
+    print("\nExtraction Method Errors:")
+    for method, method_errors in errors.items():
+        print(f"\n{method}:")
+        for error in method_errors:
+            if 'errors' in error:
+                print(f"- {error['file']}: Structure validation failed")
+                for err in error['errors']:
+                    print(f"  - {err}")
+            else:
+                print(f"- {error['file']}: {error['error']}")
+    
+    # Ensure at least one method works for each file
+    for epub_file in sample_epub_files:
+        assert any(
+            epub_file.name in successful_files
+            for successful_files in results.values()
+        ), f"No extraction method succeeded for {epub_file.name}"
+
+def test_fallback_behavior(sample_epub_files):
+    """Test parser fallback behavior."""
+    for epub_file in sample_epub_files:
+        # Try with most reliable method first
+        parser = EPUBTOCParser(epub_file, extraction_methods=['epub_meta'])
         
-        for epub_file in epub_files[:3]:  # Берем первые 3 файла для теста
-            parser = EPUBTOCParser(get_test_epub_path(epub_file))
+        try:
             toc = parser.extract_toc()
+            # If succeeded, validate structure
+            validation_errors = validate_toc_structure(toc)
+            assert not validation_errors, f"Structure validation failed:\n" + "\n".join(validation_errors)
             
-            results.append({
-                'file': epub_file,
-                'toc_items': len(toc) if toc else 0,
-                'success': toc is not None
-            })
+        except ExtractionError:
+            # Try fallback to all methods
+            parser = EPUBTOCParser(epub_file)
+            toc = parser.extract_toc()
+            validation_errors = validate_toc_structure(toc)
+            assert not validation_errors, f"Structure validation failed:\n" + "\n".join(validation_errors)
+
+def test_error_handling(sample_epub_files):
+    """Test error handling in different scenarios."""
+    epub_file = sample_epub_files[0]
+    
+    # Test with invalid extraction method
+    with pytest.raises(ValidationError):
+        parser = EPUBTOCParser(epub_file, extraction_methods=['invalid_method'])
+    
+    # Test with corrupted EPUB
+    with pytest.raises(StructureError):
+        # Simulate corrupted EPUB by providing text file
+        with open("test.epub", "w") as f:
+            f.write("Not an EPUB file")
+        parser = EPUBTOCParser("test.epub")
+        parser.extract_toc()
+    
+    # Test with invalid TOC structure
+    with pytest.raises(ValidationError):
+        parser = EPUBTOCParser(epub_file)
+        # Simulate invalid TOC item
+        invalid_toc = [{'title': '', 'href': None, 'level': -1}]
+        TOCItem.from_dict(invalid_toc[0])
+
+def test_toc_conversion():
+    """Test TOC conversion between formats."""
+    # Test valid conversion
+    data = {
+        'title': 'Chapter 1',
+        'href': 'chapter1.html',
+        'level': 0,
+        'children': [
+            {
+                'title': 'Section 1.1',
+                'href': 'section1.1.html',
+                'level': 1,
+                'children': []
+            }
+        ]
+    }
+    
+    item = TOCItem.from_dict(data)
+    assert item.title == 'Chapter 1'
+    assert item.href == 'chapter1.html'
+    assert item.level == 0
+    assert len(item.children) == 1
+    assert item.children[0].title == 'Section 1.1'
+    
+    # Test round-trip conversion
+    converted = item.to_dict()
+    assert converted == data
+
+def test_toc_validation():
+    """Test TOC validation with various edge cases."""
+    # Test empty TOC
+    assert validate_toc_structure([]) == []
+    
+    # Test minimal valid TOC
+    minimal_toc = [{
+        'title': 'Chapter 1',
+        'href': 'chapter1.html',
+        'level': 0,
+        'children': []
+    }]
+    assert validate_toc_structure(minimal_toc) == []
+    
+    # Test invalid TOC items
+    invalid_items = [
+        # Missing required fields
+        {'title': 'Chapter 1'},
+        {'href': 'chapter1.html'},
+        {'level': 0},
         
-        # Проверяем результаты
-        assert len(results) > 0
-        for result in results:
-            assert result['success'], f"Не удалось обработать файл {result['file']}"
-            assert result['toc_items'] > 0, f"Нет элементов TOC в файле {result['file']}" 
+        # Invalid field types
+        {'title': '', 'href': 'chapter1.html', 'level': 0},
+        {'title': 'Chapter 1', 'href': '', 'level': 0},
+        {'title': 'Chapter 1', 'href': 'chapter1.html', 'level': '0'},
+        
+        # Invalid level values
+        {'title': 'Chapter 1', 'href': 'chapter1.html', 'level': -1},
+        
+        # Invalid children
+        {
+            'title': 'Chapter 1',
+            'href': 'chapter1.html',
+            'level': 1,
+            'children': 'not a list'
+        }
+    ]
+    
+    for item in invalid_items:
+        errors = validate_toc_structure([item])
+        assert len(errors) > 0, f"Expected validation errors for {item}"
+
+def test_toc_hierarchy():
+    """Test TOC hierarchy validation."""
+    # Valid hierarchy
+    valid_toc = [
+        {
+            'title': 'Chapter 1',
+            'href': 'chapter1.html',
+            'level': 0,
+            'children': [
+                {
+                    'title': 'Section 1.1',
+                    'href': 'section1.1.html',
+                    'level': 1,
+                    'children': [
+                        {
+                            'title': 'Subsection 1.1.1',
+                            'href': 'subsection1.1.1.html',
+                            'level': 2,
+                            'children': []
+                        }
+                    ]
+                }
+            ]
+        }
+    ]
+    assert validate_toc_structure(valid_toc) == []
+    
+    # Invalid hierarchy (child level <= parent level)
+    invalid_toc = [
+        {
+            'title': 'Chapter 1',
+            'href': 'chapter1.html',
+            'level': 1,
+            'children': [
+                {
+                    'title': 'Section 1.1',
+                    'href': 'section1.1.html',
+                    'level': 1,  # Same level as parent
+                    'children': []
+                }
+            ]
+        }
+    ]
+    errors = validate_toc_structure(invalid_toc)
+    assert len(errors) > 0, "Expected hierarchy validation errors" 
