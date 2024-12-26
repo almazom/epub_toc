@@ -48,18 +48,18 @@ def create_minimal_epub(path):
 @pytest.fixture
 def sample_toc_item():
     """Create a sample TOC item for testing."""
-    return TOCItem(
+    parent = TOCItem(
         title="Test Chapter",
         href="chapter1.html",
-        level=0,
-        children=[
-            TOCItem(
-                title="Test Section",
-                href="chapter1.html#section1",
-                level=1
-            )
-        ]
+        level=0
     )
+    child = TOCItem(
+        title="Test Section",
+        href="chapter1.html#section1",
+        level=1
+    )
+    parent.add_child(child)
+    return parent
 
 def test_toc_item_creation():
     """Test TOCItem creation and default values."""
@@ -126,21 +126,60 @@ def test_extract_from_epub_meta_success(mock_epub_meta, tmp_path):
     assert len(result[0].children) == 1
     assert result[0].children[0].title == "Section 1.1"
 
-def test_save_toc_to_json(tmp_path, sample_toc_item):
-    """Test saving TOC to JSON file."""
-    epub_path = tmp_path / "test.epub"
-    create_minimal_epub(epub_path)
-    json_path = tmp_path / "toc.json"
+def test_save_toc_to_json(tmp_path):
+    """Test saving TOC to JSON file with simplified format."""
+    # Create test file
+    test_file = tmp_path / "test.epub"
+    create_minimal_epub(test_file)
     
-    parser = EPUBTOCParser(epub_path)
-    parser.toc = [sample_toc_item]
-    parser.save_toc_to_json(json_path)
+    # Initialize parser
+    parser = EPUBTOCParser(test_file)
     
-    with open(json_path) as f:
+    # Create sample TOC
+    toc = [
+        TOCItem(title="Chapter 1", href="ch1.html", level=1),
+        TOCItem(title="Chapter 2", href="ch2.html", level=1)
+    ]
+    parser.toc = toc
+    
+    # Save to JSON
+    json_file = tmp_path / "toc.json"
+    parser.save_toc_to_json(json_file)
+    
+    # Verify JSON content
+    with open(json_file) as f:
         data = json.load(f)
-    assert len(data) == 1
-    assert data[0]["title"] == "Test Chapter"
-    assert data[0]["children"][0]["title"] == "Test Section"
+    
+    # Check main structure
+    assert isinstance(data, dict), "Root should be a dictionary"
+    assert "metadata" in data, "Should have metadata"
+    assert "toc" in data, "Should have toc"
+    
+    # Check metadata structure
+    metadata = data["metadata"]
+    assert isinstance(metadata, dict)
+    assert "title" in metadata
+    assert "authors" in metadata
+    assert "file_name" in metadata
+    assert "file_size" in metadata
+    assert isinstance(metadata["authors"], list)
+    
+    # Check TOC structure
+    toc_data = data["toc"]
+    assert isinstance(toc_data, list)
+    assert len(toc_data) == 2
+    
+    # Check first item
+    assert toc_data[0]["title"] == "Chapter 1"
+    assert toc_data[0]["href"] == "ch1.html"
+    assert toc_data[0]["level"] == 1
+    assert isinstance(toc_data[0]["children"], list)
+    
+    # Check second item
+    assert toc_data[1]["title"] == "Chapter 2"
+    assert toc_data[1]["href"] == "ch2.html"
+    assert toc_data[1]["level"] == 1
+    assert isinstance(toc_data[1]["children"], list)
 
 def test_print_toc_without_extraction(tmp_path):
     """Test print_toc when TOC is not extracted."""

@@ -38,143 +38,67 @@ from .exceptions import (
 logger = logging.getLogger(__name__)
 
 class TOCItem:
-    """Represents a single item in the table of contents.
+    """Represents a Table of Contents item."""
     
-    This class implements a node in the hierarchical table of contents structure.
-    Each item has a title, link to content (href), nesting level, and optional
-    child items.
-
-    Attributes:
-        title (str): The display text for this TOC item
-        href (str): The link to the content this item points to
-        level (int): The nesting level in the TOC hierarchy (0-based)
-        children (List[TOCItem]): Child items in the TOC hierarchy
-        description (Optional[str]): Optional description of the item
-        REQUIRED_FIELDS (set): Class attribute defining required fields for validation
-
-    Examples:
-        Create a simple TOC item:
-        >>> item = TOCItem('Chapter 1', 'chapter1.html')
-        >>> print(item.title)
-        'Chapter 1'
-
-        Create nested structure:
-        >>> parent = TOCItem('Part 1', 'part1.html', level=0)
-        >>> child = TOCItem('Chapter 1', 'chapter1.html', level=1)
-        >>> parent.children.append(child)
-        >>> print(len(parent.children))
-        1
-    
-    Notes:
-        - Level 0 represents top-level items
-        - All items must have a title and href
-        - Children should have a higher level than their parent
-    """
-    
-    REQUIRED_FIELDS = {'title', 'href', 'level'}
-    
-    def __init__(self, title: str, href: str, level: int = 0, children: List['TOCItem'] = None):
-        """Initialize TOC item.
+    def __init__(self, title: str, href: str, level: int = 0, description: str = None):
+        """Initialize TOC item with validation.
         
         Args:
-            title: Display text for this TOC item
-            href: Link to the content this item points to
-            level: Nesting level in the TOC hierarchy (0-based)
-            children: Optional list of child items
-        
-        Raises:
-            ValidationError: If title is empty or not a string,
-                           if href is not a string, or if level is negative
-        """
-        self.validate_fields(title, href, level)
-        self.title = title
-        self.href = href
-        self.level = level
-        self.children = children or []
-        self.description = None
-    
-    @classmethod
-    def validate_fields(cls, title: str, href: str, level: int) -> None:
-        """Validate TOC item fields.
-        
-        Performs validation of the essential fields for a TOC item.
-        
-        Args:
-            title: Item title to validate
-            href: Content link to validate
-            level: Nesting level to validate
+            title: Title of the TOC item
+            href: Link to the content
+            level: Nesting level (0 for top level)
+            description: Optional description
             
         Raises:
-            ValidationError: If any field fails validation:
-                - title is empty or not a string
-                - href is not a string
-                - level is negative or not an integer
+            ValidationError: If title or href is empty
         """
-        if not title or not isinstance(title, str):
-            raise ValidationError("Title must be a non-empty string")
-        if not isinstance(href, str):
-            raise ValidationError("Href must be a string")
-        if not isinstance(level, int) or level < 0:
-            raise ValidationError("Level must be a non-negative integer")
-    
+        if not title or not title.strip():
+            raise ValidationError("TOC item must have a non-empty title")
+        if not href or not href.strip():
+            raise ValidationError("TOC item must have a non-empty href")
+            
+        self.title = title.strip()
+        self.href = href.strip()
+        self.level = level
+        self.description = description.strip() if description else None
+        self.children = []
+
+    def add_child(self, child: 'TOCItem') -> None:
+        """Add a child TOC item."""
+        self.children.append(child)
+
     def to_dict(self) -> Dict:
-        """Convert TOC item to dictionary representation.
-        
-        Creates a dictionary containing all item data, including children
-        recursively converted to dictionaries.
-        
-        Returns:
-            Dict containing the following keys:
-                - title: Item title
-                - href: Content link
-                - level: Nesting level
-                - children: List of child items as dictionaries
-                - description: Optional description if set
-        """
+        """Convert TOC item to dictionary."""
         result = {
             'title': self.title,
             'href': self.href,
             'level': self.level,
             'children': [child.to_dict() for child in self.children]
         }
-        if self.description is not None:
+        if self.description:
             result['description'] = self.description
         return result
-    
+
     @classmethod
     def from_dict(cls, data: Dict) -> 'TOCItem':
-        """Create TOC item from dictionary data.
-        
-        Factory method to create a TOC item from a dictionary representation.
-        
-        Args:
-            data: Dictionary containing TOC item data with required fields:
-                - title: Item title
-                - href: Content link
-                - level: Nesting level
-                Optional fields:
-                - children: List of child items as dictionaries
-                - description: Optional item description
+        """Create TOC item from dictionary with simplified validation."""
+        if not isinstance(data, dict):
+            raise ValidationError("TOC item must be a dictionary")
             
-        Returns:
-            New TOCItem instance populated with the dictionary data
+        if 'title' not in data or 'href' not in data:
+            raise ValidationError("TOC item must have 'title' and 'href' fields")
             
-        Raises:
-            ValidationError: If any required fields are missing or invalid
-        """
-        missing_fields = cls.REQUIRED_FIELDS - set(data.keys())
-        if missing_fields:
-            raise ValidationError(f"Missing required fields: {missing_fields}")
-        
-        children = [cls.from_dict(child) for child in data.get('children', [])]
         item = cls(
             title=data['title'],
             href=data['href'],
-            level=data['level'],
-            children=children
+            level=data.get('level', 0),
+            description=data.get('description')
         )
-        if 'description' in data:
-            item.description = data['description']
+        
+        for child_data in data.get('children', []):
+            child = cls.from_dict(child_data)
+            item.add_child(child)
+            
         return item
 
 class EPUBTOCParser:
@@ -283,29 +207,40 @@ class EPUBTOCParser:
         logger.debug("File validation passed")
     
     def extract_toc(self) -> List[Dict]:
-        """Extract table of contents using configured methods.
+        """Extract table of contents using all available methods.
         
         Returns:
-            List of TOC items as dictionaries
-        
+            List of dictionaries representing TOC items
+            
         Raises:
-            ExtractionError: If no extraction method succeeds
+            ExtractionError: If all extraction methods fail
         """
         errors = {}
         
-        for method_name, method_attr in self.active_methods:
+        # Try each extraction method in order
+        for method_name, method_attr in self.EXTRACTION_METHODS:
             try:
                 logger.info(f"Trying extraction method: {method_name}")
                 method = getattr(self, method_attr)
                 result = method()
                 
-                if result:
+                if result and isinstance(result, list) and result:
                     # Validate TOC structure
                     self._validate_toc_structure(result)
                     
-                    logger.info(f"Successfully extracted TOC using {method_name}")
-                    self.toc = result
-                    return [item.to_dict() for item in result]
+                    # Convert TOCItems to dictionaries
+                    toc_dicts = []
+                    for item in result:
+                        if isinstance(item, TOCItem):
+                            toc_dicts.append(item.to_dict())
+                        else:
+                            logger.warning(f"Invalid TOC item type: {type(item)}")
+                            continue
+                    
+                    if toc_dicts:
+                        logger.info(f"Successfully extracted TOC using {method_name}")
+                        self.toc = toc_dicts  # Store dictionaries instead of TOCItem objects
+                        return toc_dicts
                     
             except Exception as e:
                 logger.warning(f"Method {method_name} failed: {str(e)}")
@@ -325,24 +260,44 @@ class EPUBTOCParser:
             ValidationError: If structure is invalid
         """
         if not isinstance(toc_items, list):
-            raise ValidationError("TOC must be a list")
+            raise ValidationError(f"TOC must be a list, got {type(toc_items)}")
+            
         if not toc_items:
-            raise ValidationError("TOC cannot be empty")
+            logger.warning("TOC is empty")
+            return
             
         def validate_item(item: TOCItem, path: str = "root") -> None:
             if not isinstance(item, TOCItem):
-                raise ValidationError(f"{path}: Item must be a TOCItem instance")
+                raise ValidationError(
+                    f"{path}: Item must be a TOCItem instance, got {type(item)}"
+                )
+            
+            # Validate required fields
+            if not item.title or not isinstance(item.title, str):
+                raise ValidationError(f"{path}: Invalid title: {item.title}")
+                
+            if not item.href or not isinstance(item.href, str):
+                raise ValidationError(f"{path}: Invalid href: {item.href}")
+                
+            if not isinstance(item.level, int) or item.level < 0:
+                raise ValidationError(f"{path}: Invalid level: {item.level}")
             
             # Validate children
+            if not isinstance(item.children, list):
+                raise ValidationError(f"{path}: Children must be a list")
+                
             for i, child in enumerate(item.children):
-                validate_item(child, f"{path}->child[{i}]")
+                child_path = f"{path}->child[{i}]"
+                validate_item(child, child_path)
                 
                 # Validate level hierarchy
                 if child.level <= item.level:
-                    raise ValidationError(
-                        f"{path}->child[{i}]: Child level must be greater than parent level"
+                    logger.warning(
+                        f"{child_path}: Child level ({child.level}) not greater "
+                        f"than parent level ({item.level})"
                     )
         
+        # Validate each top-level item
         for i, item in enumerate(toc_items):
             validate_item(item, f"item[{i}]")
     
@@ -351,6 +306,11 @@ class EPUBTOCParser:
         try:
             logger.info("Attempting extraction using epub_meta")
             metadata = get_epub_metadata(str(self.epub_path))
+            
+            if not metadata:
+                logger.warning("No metadata returned from epub_meta")
+                return None
+                
             toc = metadata.get('toc')
             if not toc:
                 logger.warning("No TOC found in epub_meta metadata")
@@ -364,21 +324,39 @@ class EPUBTOCParser:
             stack = [(result, -1)]
             
             for item in toc:
-                level = item.get('level', 0)
-                title = item.get('title', '')
-                href = item.get('src', '')
-                
-                logger.debug(f"Processing TOC item: {title} (level {level})")
-                
-                while level <= stack[-1][1]:
-                    stack.pop()
-                
-                toc_item = TOCItem(title=title, href=href, level=level)
-                stack[-1][0].append(toc_item)
-                stack.append((toc_item.children, level))
+                try:
+                    level = item.get('level', 0)
+                    title = item.get('title', '').strip()
+                    href = item.get('src', '').strip()
+                    
+                    if not title:
+                        logger.warning(f"Skipping TOC item with empty title: {item}")
+                        continue
+                        
+                    if not href:
+                        logger.warning(f"Skipping TOC item with empty href: {item}")
+                        continue
+                    
+                    logger.debug(f"Processing TOC item: {title} (level {level})")
+                    
+                    while level <= stack[-1][1]:
+                        stack.pop()
+                    
+                    toc_item = TOCItem(title=title, href=href, level=level)
+                    stack[-1][0].append(toc_item)
+                    stack.append((toc_item.children, level))
+                    
+                except Exception as e:
+                    logger.warning(f"Failed to process TOC item {item}: {e}")
+                    continue
             
+            if not result:
+                logger.warning("No valid TOC items were extracted")
+                return None
+                
             logger.info(f"Successfully extracted {len(result)} top-level items using epub_meta")
             return result
+            
         except Exception as e:
             logger.warning(f"Failed to extract TOC using epub_meta: {e}")
             return None
@@ -417,19 +395,20 @@ class EPUBTOCParser:
                     content = nav_point.find('ncx:content', ns)
                     href = content.get('src', '') if content is not None else ''
                     
-                    # Process children
-                    children = []
+                    # Create TOC item first
+                    item = TOCItem(
+                        title=text.text,
+                        href=href,
+                        level=level
+                    )
+                    
+                    # Then process children and add them
                     for child in nav_point.findall('ncx:navPoint', ns):
                         child_item = process_nav_point(child, level + 1)
                         if child_item:
-                            children.append(child_item)
+                            item.children.append(child_item)
                     
-                    return TOCItem(
-                        title=text.text,
-                        href=href,
-                        level=level,
-                        children=children
-                    )
+                    return item
                 
                 # Process all nav points
                 result = []
@@ -666,26 +645,53 @@ class EPUBTOCParser:
             logger.warning(f"Failed to extract metadata: {e}")
             return {}
     
-    def save_toc_to_json(self, output_path: Union[str, Path]) -> None:
-        """Save TOC to JSON file with metadata."""
+    def save_toc_to_json(self, output_path: Union[str, Path], metadata: Dict = None) -> None:
+        """Save TOC to JSON file with enhanced formatting and metadata.
+        
+        Args:
+            output_path: Path where to save the JSON file
+            metadata: Optional metadata to include in the output
+            
+        Raises:
+            OutputError: If saving fails
+            ValidationError: If TOC not extracted yet
+        """
         if not self.toc:
-            raise ValueError("No TOC extracted yet. Call extract_toc() first.")
-        
+            raise ValidationError("TOC not extracted yet")
+            
         output_path = Path(output_path)
-        output_path.parent.mkdir(parents=True, exist_ok=True)
+        metadata = metadata or self.extract_metadata()
         
-        # Extract metadata
-        metadata = self.extract_metadata()
-        
-        # Prepare output data
+        # Convert TOC items to dictionaries if they are TOCItem objects
+        toc_data = []
+        for item in self.toc:
+            if isinstance(item, TOCItem):
+                toc_data.append(item.to_dict())
+            elif isinstance(item, dict):
+                toc_data.append(item)
+            else:
+                logger.warning(f"Unexpected TOC item type: {type(item)}")
+                continue
+
+        # Prepare output data with simplified structure
         data = {
-            "metadata": metadata,
-            "toc": self.toc
+            "metadata": {
+                "title": metadata.get("title"),
+                "authors": metadata.get("authors", []),
+                "file_name": str(self.epub_path.name),
+                "file_size": self.epub_path.stat().st_size if self.epub_path.exists() else None,
+                "publisher": metadata.get("publisher"),
+                "language": metadata.get("language"),
+            },
+            "toc": toc_data
         }
         
-        # Save to file
+        # Create parent directory if it doesn't exist
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        
+        # Save to file with nice formatting
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump(data, indent=2, ensure_ascii=False, default=str, fp=f)
+            json.dump(data, f, indent=4, ensure_ascii=False, default=str)
         
         logger.info(f"Saved TOC with metadata to: {output_path}")
     

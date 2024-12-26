@@ -71,3 +71,20 @@ test_extract.py
 
 # Temporary files
 output.json 
+
+# Cleanup script
+clean_test_data.sh 
+
+# Benchmarks
+.benchmarks/
+benchmark_results/
+
+# Multiple test scripts (keep only the main one)
+run_tests_new.sh
+run_tests_v2.sh
+
+# Additional temporary files
+*.bak
+*.tmp
+*~
+.DS_Store 
