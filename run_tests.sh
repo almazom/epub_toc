@@ -339,6 +339,8 @@ echo -e "${DIM}|${NC}   ${GREEN}✓${NC} Directories ready"
 declare -A strategy_success=( ["ncx"]=0 ["nav"]=0 ["landmarks"]=0 ["fallback"]=0 )
 declare -A strategy_total=( ["ncx"]=0 ["nav"]=0 ["landmarks"]=0 ["fallback"]=0 )
 declare -A strategy_failed=( ["ncx"]=0 ["nav"]=0 ["landmarks"]=0 ["fallback"]=0 )
+declare -A metadata_failed=( ["ncx"]=0 ["nav"]=0 ["landmarks"]=0 ["fallback"]=0 )
+declare -A json_failed=( ["ncx"]=0 ["nav"]=0 ["landmarks"]=0 ["fallback"]=0 )
 
 # Process each EPUB file
 echo -e "${DIM}|${NC} → Processing EPUB files:"
@@ -357,6 +359,42 @@ for epub_file in tests/data/epub_samples/*.epub; do
             strategy_total[$strategy]=$((strategy_total[$strategy] + 1))
             
             echo -e "${DIM}|${NC}     ${CYAN}→${NC} Strategy: $strategy"
+            
+            # Validate metadata extraction
+            if python -c "
+from epub_toc import EPUBTOCParser
+parser = EPUBTOCParser('$epub_file')
+metadata = parser.extract_metadata()
+assert isinstance(metadata, dict)
+assert 'title' in metadata
+assert 'authors' in metadata
+assert 'file_size' in metadata
+print('Metadata validation passed')
+            " 2>/dev/null; then
+                echo -e "${DIM}|${NC}     ${GREEN}✓${NC} Metadata validation passed"
+            else
+                echo -e "${DIM}|${NC}     ${RED}✗${NC} Metadata validation failed"
+                metadata_failed[$strategy]=$((metadata_failed[$strategy] + 1))
+            fi
+            
+            # Validate JSON structure
+            if python -c "
+import json
+with open('tests/data/epub_toc_json/${filename}_toc.json', 'r') as f:
+    data = json.load(f)
+assert isinstance(data, dict)
+assert 'metadata' in data
+assert 'toc' in data
+assert isinstance(data['metadata'], dict)
+assert isinstance(data['toc'], list)
+print('JSON structure validation passed')
+            " 2>/dev/null; then
+                echo -e "${DIM}|${NC}     ${GREEN}✓${NC} JSON structure validation passed"
+            else
+                echo -e "${DIM}|${NC}     ${RED}✗${NC} JSON structure validation failed"
+                json_failed[$strategy]=$((json_failed[$strategy] + 1))
+            fi
+            
         else
             echo -e "${DIM}|${NC}   ${RED}✗${NC} Failed to generate TOC for $filename"
             
@@ -369,6 +407,31 @@ for epub_file in tests/data/epub_samples/*.epub; do
         fi
     fi
 done
+
+# Print summary
+echo -e "\n${DIM}+--- Summary -----------------------------------+${NC}"
+echo -e "${DIM}|${NC} Strategy success rates:"
+for strategy in "${!strategy_total[@]}"; do
+    success_rate=$(( ${strategy_success[$strategy]} * 100 / ${strategy_total[$strategy]} ))
+    echo -e "${DIM}|${NC}   $strategy: $success_rate% (${strategy_success[$strategy]}/${strategy_total[$strategy]})"
+done
+
+echo -e "${DIM}|${NC} Metadata validation:"
+total_metadata_failed=0
+for strategy in "${!metadata_failed[@]}"; do
+    total_metadata_failed=$((total_metadata_failed + ${metadata_failed[$strategy]}))
+done
+echo -e "${DIM}|${NC}   Failed: $total_metadata_failed"
+
+echo -e "${DIM}|${NC} JSON structure validation:"
+total_json_failed=0
+for strategy in "${!json_failed[@]}"; do
+    total_json_failed=$((total_json_failed + ${json_failed[$strategy]}))
+done
+echo -e "${DIM}|${NC}   Failed: $total_json_failed"
+
+echo -e "${DIM}+----------------------------------------------+${NC}"
+
 rm -f .gen_error
 
 # Generate strategy report

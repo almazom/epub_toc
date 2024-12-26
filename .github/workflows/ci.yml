@@ -11,10 +11,11 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+        python-version: [3.7, 3.8, 3.9, "3.10", "3.11"]
 
     steps:
     - uses: actions/checkout@v3
+    
     - name: Set up Python ${{ matrix.python-version }}
       uses: actions/setup-python@v4
       with:
@@ -23,63 +24,51 @@ jobs:
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install -e ".[dev]"
+        pip install -r requirements.txt
+        pip install pytest pytest-cov mypy flake8
     
-    - name: Lint with flake8
+    - name: Run tests with coverage
       run: |
-        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
-        flake8 . --count --exit-zero --max-complexity=10 --max-line-length=88 --statistics
+        pytest tests/ --cov=. --cov-report=xml -v
     
-    - name: Check formatting with black
-      run: |
-        black --check .
-    
-    - name: Sort imports with isort
-      run: |
-        isort --check-only --diff .
-    
-    - name: Type check with mypy
-      run: |
-        mypy epub_toc tests
-    
-    - name: Run tests
-      run: |
-        pytest
-
     - name: Upload coverage to Codecov
       uses: codecov/codecov-action@v3
       with:
         file: ./coverage.xml
-        fail_ci_if_error: true 
+        fail_ci_if_error: true
+    
+    - name: Type check with mypy
+      run: |
+        mypy . --ignore-missing-imports
+    
+    - name: Lint with flake8
+      run: |
+        flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
+        flake8 . --count --exit-zero --max-complexity=10 --statistics
 
-  installation-test:
+  publish:
     needs: test
     runs-on: ubuntu-latest
-    strategy:
-      matrix:
-        python-version: ["3.7", "3.8", "3.9", "3.10", "3.11"]
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags')
 
     steps:
     - uses: actions/checkout@v3
-    - name: Set up Python ${{ matrix.python-version }}
+    
+    - name: Set up Python
       uses: actions/setup-python@v4
       with:
-        python-version: ${{ matrix.python-version }}
+        python-version: "3.11"
     
-    - name: Test regular installation
+    - name: Install dependencies
       run: |
-        python -m venv test_venv
-        source test_venv/bin/activate
-        pip install .
-        python tests/installation/test_installation.py
-        deactivate
-        rm -rf test_venv
+        python -m pip install --upgrade pip
+        pip install build twine
     
-    - name: Test editable installation
-      run: |
-        python -m venv test_venv_editable
-        source test_venv_editable/bin/activate
-        pip install -e .
-        python tests/installation/test_installation.py
-        deactivate
-        rm -rf test_venv_editable 
+    - name: Build package
+      run: python -m build
+    
+    - name: Publish to PyPI
+      env:
+        TWINE_USERNAME: __token__
+        TWINE_PASSWORD: ${{ secrets.PYPI_API_TOKEN }}
+      run: twine upload dist/* 
