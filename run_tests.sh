@@ -8,6 +8,13 @@ BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 NC='\033[0m'
 
+# Test categories
+declare -A test_categories=(
+    ["Installation Tests"]="tests/integration/test_installation.py"
+    ["Integration Tests"]="tests/integration/test_epub_analysis.py tests/integration/test_epub_files.py tests/integration/test_epub_parser_integration.py"
+    ["Unit Tests"]="tests/unit/"
+)
+
 # JSON directory setup
 JSON_DIR="tests/data/epub_toc_json"
 
@@ -30,9 +37,9 @@ echo -e "\nCleaning up old JSON files..."
 rm -f "$JSON_DIR"/*.json
 echo -e "${GREEN}✓${NC} Cleaned up JSON directory"
 
-# Wait 5 seconds
-echo -e "\nWaiting 5 seconds for filesystem sync..."
-sleep 5
+# Wait for filesystem sync
+echo -e "\nWaiting for filesystem sync..."
+sleep 2
 
 # Verify cleanup
 echo -e "\nVerifying cleanup..."
@@ -43,42 +50,53 @@ else
     exit 1
 fi
 
-echo -e "\n${BLUE}Starting Tests${NC}\n"
+# Function to run tests and process output
+run_test_category() {
+    local category=$1
+    local tests=$2
+    
+    echo -e "\n${CYAN}┌────────────── Running $category ───────────────┐${NC}"
+    
+    python -m pytest $tests -v --cov=epub_toc --cov-append | while read -r line; do
+        # Track strategy usage
+        if [[ $line == *"Using strategy"* ]]; then
+            strategy=$(echo "$line" | grep -o 'ncx\|nav\|landmarks\|fallback')
+            if [ ! -z "$strategy" ]; then
+                strategy_total[$strategy]=$((strategy_total[$strategy] + 1))
+            fi
+        fi
+        
+        # Track strategy success/failure
+        if [[ $line == *"Strategy succeeded"* ]]; then
+            strategy=$(echo "$line" | grep -o 'ncx\|nav\|landmarks\|fallback')
+            if [ ! -z "$strategy" ]; then
+                strategy_success[$strategy]=$((strategy_success[$strategy] + 1))
+            fi
+        fi
+        
+        # Output with status indicators
+        if [[ $line == *"PASSED"* ]]; then
+            echo -e "${GREEN}✓${NC} $line"
+        elif [[ $line == *"FAILED"* ]]; then
+            echo -e "${RED}✗${NC} $line"
+        elif [[ $line == *"SKIPPED"* ]]; then
+            echo -e "${YELLOW}○${NC} $line"
+        elif [[ $line == *"collected"* ]]; then
+            echo -e "\n$line\n"
+        else
+            echo "$line"
+        fi
+    done
+    
+    echo -e "${CYAN}└──────────────────────────────────────────────────┘${NC}\n"
+}
 
-# Run pytest and process output in real-time
-python -m pytest -v --cov=epub_toc | while read -r line; do
-    # Track strategy usage
-    if [[ $line == *"Using strategy"* ]]; then
-        strategy=$(echo "$line" | grep -o 'ncx\|nav\|landmarks\|fallback')
-        if [ ! -z "$strategy" ]; then
-            strategy_total[$strategy]=$((strategy_total[$strategy] + 1))
-        fi
-    fi
-    
-    # Track strategy success/failure
-    if [[ $line == *"Strategy succeeded"* ]]; then
-        strategy=$(echo "$line" | grep -o 'ncx\|nav\|landmarks\|fallback')
-        if [ ! -z "$strategy" ]; then
-            strategy_success[$strategy]=$((strategy_success[$strategy] + 1))
-        fi
-    fi
-    
-    # Output with status indicators
-    if [[ $line == *"PASSED"* ]]; then
-        echo -e "${GREEN}✓${NC} $line"
-    elif [[ $line == *"FAILED"* ]]; then
-        echo -e "${RED}✗${NC} $line"
-    elif [[ $line == *"SKIPPED"* ]]; then
-        echo -e "${YELLOW}○${NC} $line"
-    elif [[ $line == *"collected"* ]]; then
-        echo -e "\n$line\n"
-    else
-        echo "$line"
-    fi
+# Run all test categories
+echo -e "\n${BLUE}Starting Test Suite${NC}"
+
+for category in "${!test_categories[@]}"; do
+    run_test_category "$category" "${test_categories[$category]}"
 done
-
-# Get exit status
-TEST_STATUS=${PIPESTATUS[0]}
 
 # Calculate total time
 END_TIME=$(date +%s)
@@ -140,4 +158,4 @@ echo -e "${CYAN}│${NC}"
 echo -e "${CYAN}└──────────────────────────────────────────────────┘${NC}"
 
 # Exit with test status
-exit $TEST_STATUS 
+exit ${PIPESTATUS[0]} 

@@ -3,6 +3,10 @@
 [![Python Version](https://img.shields.io/badge/python-3.7%2B-blue)](https://www.python.org)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Code style: black](https://img.shields.io/badge/code%20style-black-000000.svg)](https://github.com/psf/black)
+[![PyPI version](https://badge.fury.io/py/epub-toc.svg)](https://badge.fury.io/py/epub-toc)
+[![Downloads](https://pepy.tech/badge/epub-toc)](https://pepy.tech/project/epub-toc)
+[![PyPI Status](https://img.shields.io/pypi/status/epub-toc.svg)](https://pypi.python.org/pypi/epub-toc)
+[![Tests](https://github.com/almazilaletdinov/epub_toc/workflows/Tests/badge.svg)](https://github.com/almazilaletdinov/epub_toc/actions)
 
 A Python tool for extracting table of contents from EPUB files with hierarchical structure support.
 
@@ -17,8 +21,38 @@ A Python tool for extracting table of contents from EPUB files with hierarchical
 
 ## Installation
 
+### From PyPI (recommended)
+
 ```bash
 pip install epub_toc
+```
+
+### From source (for development)
+
+```bash
+git clone https://github.com/almazilaletdinov/epub_toc.git
+cd epub_toc
+pip install -e .
+```
+
+### Verify installation
+
+```bash
+python -c "import epub_toc; print(epub_toc.__version__)"
+```
+
+### Dependencies
+
+All dependencies will be automatically installed with pip:
+- epub_meta>=0.0.7
+- lxml>=4.9.3
+- beautifulsoup4>=4.12.2
+- ebooklib>=0.18
+- tika>=2.6
+
+For development, additional dependencies can be installed with:
+```bash
+pip install -e .[dev]
 ```
 
 ## Usage
@@ -125,11 +159,35 @@ All metadata fields are optional and will be omitted if not available in the EPU
 
 ## Testing
 
-The module has been successfully tested on various EPUB files:
+The module includes comprehensive test suites:
+
+### Running Tests
+
+To run all tests with detailed reporting:
+
+```bash
+./run_tests.sh
+```
+
+This will run:
+- Installation tests (pip install/uninstall)
+- Integration tests (EPUB parsing, TOC extraction)
+- Unit tests (core functionality)
+
+### Test Coverage
+
+The test suite includes:
+- Installation verification
+- Package dependencies
 - Russian books (NCX method)
 - English books (epub_meta method)
 - Files with different TOC structures
 - Files of different sizes (from 400KB to 8MB)
+
+Test results and coverage reports are generated in:
+- `coverage.xml` - Code coverage report
+- `reports/` - Test execution reports
+- `tests/data/epub_toc_json/` - Generated TOC files
 
 ## Requirements
 - Python 3.7+
