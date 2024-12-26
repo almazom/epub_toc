@@ -54,4 +54,20 @@ tests/data/reports/*.json
 .gen_error
 .test_results
 .type_check_results
-.lint_results 
+.lint_results
+
+# IDE
+.cursorrules
+
+# Reports and logs
+reports/
+logs/
+*.log
+
+# Test data
+tests/data/epub_samples/
+test.epub
+test_extract.py
+
+# Temporary files
+output.json 
