@@ -176,3 +176,61 @@ def test_extraction_methods(epub_samples_dir):
         for name, error in failed_files:
             print(f"- {name}: {error}")
         pytest.fail(f"Test failed for {len(failed_files)} files") 
+
+def test_metadata_extraction(epub_samples_dir):
+    """Test metadata extraction from EPUB files."""
+    epub_files = [f for f in epub_samples_dir.glob("*.epub") if f.is_file()]
+    if not epub_files:
+        pytest.skip("No EPUB files found in test directory")
+    
+    for epub_file in epub_files:
+        parser = EPUBTOCParser(epub_file)
+        metadata = parser.extract_metadata()
+        
+        # Basic validation of metadata
+        assert isinstance(metadata, dict), f"Metadata from {epub_file.name} should be a dictionary"
+        
+        # Check required fields are of correct type if present
+        if "title" in metadata:
+            assert isinstance(metadata["title"], str)
+        if "authors" in metadata:
+            assert isinstance(metadata["authors"], list)
+        if "file_size" in metadata:
+            assert isinstance(metadata["file_size"], (int, type(None)))
+        if "file_name" in metadata:
+            assert isinstance(metadata["file_name"], str)
+            assert metadata["file_name"] == epub_file.name
+
+def test_json_output_structure(epub_samples_dir, tmp_path):
+    """Test JSON output structure including metadata."""
+    epub_files = [f for f in epub_samples_dir.glob("*.epub") if f.is_file()]
+    if not epub_files:
+        pytest.skip("No EPUB files found in test directory")
+    
+    for epub_file in epub_files:
+        parser = EPUBTOCParser(epub_file)
+        try:
+            toc = parser.extract_toc()
+            output_file = tmp_path / f"{epub_file.stem}_toc.json"
+            parser.save_toc_to_json(output_file)
+            
+            # Read and validate JSON structure
+            with open(output_file, 'r', encoding='utf-8') as f:
+                data = json.load(f)
+            
+            # Check top-level structure
+            assert isinstance(data, dict)
+            assert "metadata" in data
+            assert "toc" in data
+            
+            # Validate metadata
+            assert isinstance(data["metadata"], dict)
+            
+            # Validate TOC
+            assert isinstance(data["toc"], list)
+            for item in data["toc"]:
+                assert isinstance(item, dict)
+                assert all(key in item for key in ["title", "href", "level", "children"])
+        
+        except Exception as e:
+            pytest.fail(f"Failed to process {epub_file.name}: {str(e)}") 

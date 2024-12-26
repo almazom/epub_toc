@@ -641,25 +641,53 @@ class EPUBTOCParser:
             logger.warning(f"Failed to extract TOC using Calibre: {e}")
             return None
     
-    def save_toc_to_json(self, output_path: Union[str, Path]):
-        """Save extracted TOC to JSON file.
-        
-        Args:
-            output_path: Path to save JSON file
-        
-        Raises:
-            ValidationError: If TOC hasn't been extracted yet
-        """
+    def extract_metadata(self) -> dict:
+        """Extract metadata from EPUB file."""
+        try:
+            metadata = get_epub_metadata(str(self.epub_path))
+            return {
+                "title": metadata.get('title'),
+                "authors": metadata.get('authors', []),
+                "publisher": metadata.get('publisher'),
+                "publication_date": metadata.get('publication_date'),
+                "language": metadata.get('language'),
+                "description": metadata.get('description'),
+                "cover_image_path": metadata.get('cover_image_path'),
+                "isbn": metadata.get('isbn'),
+                "rights": metadata.get('rights'),
+                "series": metadata.get('series'),
+                "series_index": metadata.get('series_index'),
+                "identifiers": metadata.get('identifiers', {}),
+                "subjects": metadata.get('subjects', []),
+                "file_size": Path(self.epub_path).stat().st_size if self.epub_path else None,
+                "file_name": Path(self.epub_path).name if self.epub_path else None
+            }
+        except Exception as e:
+            logger.warning(f"Failed to extract metadata: {e}")
+            return {}
+    
+    def save_toc_to_json(self, output_path: Union[str, Path]) -> None:
+        """Save TOC to JSON file with metadata."""
         if not self.toc:
-            raise ValidationError("TOC not extracted")
+            raise ValueError("No TOC extracted yet. Call extract_toc() first.")
         
         output_path = Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
         
+        # Extract metadata
+        metadata = self.extract_metadata()
+        
+        # Prepare output data
+        data = {
+            "metadata": metadata,
+            "toc": self.toc
+        }
+        
+        # Save to file
         with open(output_path, 'w', encoding='utf-8') as f:
-            json.dump([item.to_dict() for item in self.toc], f, 
-                     ensure_ascii=False, indent=2)
-        logger.info(f"Saved TOC to {output_path}")
+            json.dump(data, indent=2, ensure_ascii=False, default=str, fp=f)
+        
+        logger.info(f"Saved TOC with metadata to: {output_path}")
     
     def print_toc(self):
         """Print extracted TOC to console.
