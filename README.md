@@ -82,22 +82,46 @@ Report structure:
 TOC is saved in JSON format with the following structure:
 
 ```json
-[
-  {
-    "title": "Chapter 1",
-    "href": "chapter1.html",
-    "level": 0,
-    "children": [
-      {
-        "title": "Section 1.1",
-        "href": "chapter1.html#section1",
-        "level": 1,
-        "children": []
-      }
-    ]
-  }
-]
+{
+  "metadata": {
+    "title": "Book Title",
+    "authors": ["Author 1", "Author 2"],
+    "publisher": "Publisher Name",
+    "publication_date": "2024-01-01",
+    "language": "en",
+    "description": "Book description",
+    "cover_image_path": "path/to/cover.jpg",
+    "isbn": "978-3-16-148410-0",
+    "rights": "Copyright information",
+    "series": "Series Name",
+    "series_index": 1,
+    "identifiers": {
+      "isbn13": "978-3-16-148410-0",
+      "uuid": "550e8400-e29b-41d4-a716-446655440000"
+    },
+    "subjects": ["Fiction", "Adventure"],
+    "file_size": 1234567,
+    "file_name": "book.epub"
+  },
+  "toc": [
+    {
+      "title": "Chapter 1",
+      "href": "chapter1.html",
+      "level": 0,
+      "children": [
+        {
+          "title": "Section 1.1",
+          "href": "chapter1.html#section1",
+          "level": 1,
+          "children": []
+        }
+      ]
+    }
+  ]
+}
 ```
+
+All metadata fields are optional and will be omitted if not available in the EPUB file.
 
 ## Testing
 

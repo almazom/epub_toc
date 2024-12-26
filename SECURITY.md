@@ -2,47 +2,59 @@
 
 ## Supported Versions
 
+Use this section to tell people about which versions of your project are
+currently being supported with security updates.
+
 | Version | Supported          |
 | ------- | ------------------ |
-| 1.x.x   | :white_check_mark: |
+| 1.0.x   | :white_check_mark: |
 | < 1.0   | :x:                |
 
 ## Reporting a Vulnerability
 
-Security is our top priority. If you discover a vulnerability, please:
+We take the security of EPUB TOC seriously. If you believe you have found a security vulnerability, please report it to us as described below.
 
-1. DO NOT create a public issue
-2. Send vulnerability description to email: [YOUR-EMAIL]
-3. Include in your report:
-   - Project version
-   - Vulnerability description
-   - Steps to reproduce
-   - Potential impact
-   - Suggested fix (if any)
+**Please do not report security vulnerabilities through public GitHub issues.**
 
-## Processing Timeline
+Instead, please report them via email to [INSERT SECURITY EMAIL].
 
-1. You will receive confirmation within 24 hours
-2. We will verify the vulnerability and ask follow-up questions
-3. After confirmation:
-   - We will develop a fix
-   - Release a patch
-   - Publish an advisory
-   
-## Disclosure Policy
+You should receive a response within 48 hours. If for some reason you do not, please follow up via email to ensure we received your original message.
 
-- Vulnerability information will be published after patch release
-- You will be credited (if desired)
-- We follow responsible disclosure principles
+Please include the requested information listed below (as much as you can provide) to help us better understand the nature and scope of the possible issue:
 
-## Secure Development
+* Type of issue (e.g. buffer overflow, SQL injection, cross-site scripting, etc.)
+* Full paths of source file(s) related to the manifestation of the issue
+* The location of the affected source code (tag/branch/commit or direct URL)
+* Any special configuration required to reproduce the issue
+* Step-by-step instructions to reproduce the issue
+* Proof-of-concept or exploit code (if possible)
+* Impact of the issue, including how an attacker might exploit it
 
-We implement the following practices:
-- Regular dependency scanning
-- Automated code analysis
-- Code review for all changes
-- Security testing
+This information will help us triage your report more quickly.
 
-## Hall of Fame
+## Preferred Languages
 
-This section will list security researchers who have helped improve project security. 
+We prefer all communications to be in English.
+
+## Policy
+
+* We will respond to your report within 48 hours with our evaluation and expected resolution
+* If you have followed the instructions above, we will not take legal action against you in regard to your report
+* We will handle your report with strict confidentiality, and not pass on your personal details to third parties without your permission
+* We will keep you informed of the progress towards resolving the problem
+* We will give appropriate credit to you for discovering the issue, if you so desire
+
+## Safe Harbor
+
+We support safe harbor for security researchers who:
+
+* Make a good faith effort to avoid privacy violations, destruction of data, and interruption or degradation of our services
+* Only interact with accounts you own or with explicit permission of the account holder
+* Do not exploit a security issue for purposes other than verification
+* Report any vulnerability you've discovered promptly
+* Do not use automated tools to find vulnerabilities
+* Do not violate any other applicable laws or regulations
+
+## Comments on this Policy
+
+If you have suggestions on how this process could be improved please submit a pull request. 
